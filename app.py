@@ -823,6 +823,9 @@ def render_sidebar():
 # 6. MAIN ROUTER LOGIC
 # ==========================================
 def main():
+    # Force schema check on every rerun to bypass cloud cache issues
+    database.init_db()
+    
     # Inject Custom UI overrides
     visuals.inject_global_css()
 

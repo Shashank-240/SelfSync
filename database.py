@@ -29,7 +29,6 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL,
             onboarding_completed BOOLEAN DEFAULT 0,
             discipline_score INTEGER DEFAULT 0,
             current_streak INTEGER DEFAULT 0,
@@ -38,6 +37,12 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
+    
+    # Safe migration: add password_hash if it doesn't exist
+    try:
+        cursor.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+    except sqlite3.OperationalError:
+        pass
 
     # Habits Table (Tracks both Good and Bad habits to monitor)
     cursor.execute('''
@@ -123,8 +128,18 @@ def create_user(username, password):
 def verify_user(username, password):
     """Verifies a user's password and returns the user dict if successful."""
     user = get_user_by_username(username)
-    if user and user['password_hash'] == hash_password(password):
-        return user
+    if user:
+        # Legacy user migration: If they don't have a password set yet, set it to what they just typed
+        if 'password_hash' not in user.keys() or not user['password_hash']:
+            hashed_pw = hash_password(password)
+            conn = get_connection()
+            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hashed_pw, user['id']))
+            conn.commit()
+            conn.close()
+            return user
+            
+        if user['password_hash'] == hash_password(password):
+            return user
     return None
 
 def update_user_targets(user_id, target_sleep, target_screen_time):

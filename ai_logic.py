@@ -167,7 +167,7 @@ def chat_with_coach(api_key, user_id, user_message, chat_history=[]):
     try:
         # Configure Gemini Client
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-pro")
 
         # Gather user context for the model
         user = database.get_user_by_id(user_id)

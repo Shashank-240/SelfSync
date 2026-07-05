@@ -79,10 +79,16 @@ def logout_user():
 # ==========================================
 
 def render_landing():
-    st.markdown("<div style='text-align: center; padding: 40px 0;'>", unsafe_allow_html=True)
-    st.markdown("<h1 style='font-size: 3.8rem; font-weight: 800; margin-bottom: 5px; background: linear-gradient(135deg, #a78bfa 0%, #a78bfa 40%, #14b8a6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>SELFSYNC</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='font-size: 1.4rem; color: #9ca3af; margin-bottom: 30px;'>A brutal, AI-powered DisciplineOS.</p>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("""
+    <div style='display: flex; flex-direction: column; align-items: center; justify-content: center; padding-top: 10vh; padding-bottom: 5vh;'>
+        <h1 style='font-family: "Courier New", monospace; font-size: 5.5rem; font-weight: 900; margin-bottom: 0px; letter-spacing: -2px; text-shadow: 0 0 30px rgba(167, 139, 250, 0.4); background: linear-gradient(135deg, #a78bfa 0%, #8b5cf6 50%, #14b8a6 100%); color: transparent; -webkit-background-clip: text; background-clip: text;'>
+            S E L F / S Y N C
+        </h1>
+        <p style='font-size: 1.3rem; color: #9ca3af; font-weight: 600; letter-spacing: 4px; margin-top: 15px; margin-bottom: 40px; text-transform: uppercase;'>
+            // DISCIPLINE O.S //
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
@@ -105,22 +111,28 @@ def render_auth():
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         with st.form("auth_form"):
-            st.markdown("<p style='color: #9ca3af; font-size: 0.9rem;'>Enter your username to access your dashboard. If the username doesn't exist, we will forge a new account for you.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='color: #9ca3af; font-size: 0.9rem;'>Enter your username and password. If the username doesn't exist, we will forge a new account for you.</p>", unsafe_allow_html=True)
             username_input = st.text_input("Username", placeholder="e.g. Spartan01", max_chars=20)
+            password_input = st.text_input("Password", type="password")
             
             submit_auth = st.form_submit_button("Enter the Forge", type="primary")
             
             if submit_auth:
                 username = username_input.strip()
-                if not username:
-                    st.error("Username cannot be empty.")
+                password = password_input.strip()
+                if not username or not password:
+                    st.error("Username and password cannot be empty.")
                 else:
                     user = database.get_user_by_username(username)
                     if user:
-                        login_user(user['id'], user['onboarding_completed'], user['username'])
-                        st.rerun()
+                        verified_user = database.verify_user(username, password)
+                        if verified_user:
+                            login_user(verified_user['id'], verified_user['onboarding_completed'], verified_user['username'])
+                            st.rerun()
+                        else:
+                            st.error("Incorrect password.")
                     else:
-                        new_id = database.create_user(username)
+                        new_id = database.create_user(username, password)
                         if new_id:
                             database.setup_default_habits(new_id)
                             login_user(new_id, completed_onboarding=False, username=username)
@@ -151,9 +163,13 @@ def render_onboarding():
             ("Read a Book / Study", "good", True),
             ("Meditation / Mindfulness", "good", False),
             ("Drink 3L Water", "good", True),
+            ("Learn a New Skill / Code", "good", False),
+            ("Journaling / Reflection", "good", False),
             ("Doomscrolling on Social Media", "bad", True),
             ("Junk Food / Sugar Intake", "bad", True),
-            ("Procrastination / Delays", "bad", True)
+            ("Procrastination / Delays", "bad", True),
+            ("Binge-watching TV/YouTube", "bad", False),
+            ("Sleeping < 6 Hours", "bad", False)
         ]
         
         selected_habits = []
@@ -164,21 +180,7 @@ def render_onboarding():
                 selected_habits.append((name, htype))
 
     with col2:
-        st.markdown("### ⚡ The Discipline Equation")
-        st.markdown("""
-        <div class="glass-card" style="line-height: 1.6; font-size: 0.9rem;">
-            <p>Your daily <strong>Discipline Score</strong> is computed out of 100 points:</p>
-            <ul>
-                <li><strong>20 pts:</strong> Sleep duration (must be within +/- 1 hour of your target).</li>
-                <li><strong>20 pts:</strong> Screen time (must be equal to or less than your limit).</li>
-                <li><strong>30 pts:</strong> Good habits completion rate.</li>
-                <li><strong>30 pts:</strong> Bad habits avoidance rate.</li>
-            </ul>
-            <p style="color: #a78bfa;">Consistency builds streaks. A single day of complete compromise resets your streak to 0.</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("<br><br>", unsafe_allow_html=True)
+
         if st.button("Initialize Discipline Engine", type="primary", use_container_width=True):
             if not selected_habits:
                 st.error("You must select at least one habit to track.")
@@ -409,8 +411,29 @@ def render_journal():
             
             st.session_state.success_message = f"🔥 Daily log for {selected_date_str} successfully forged! Today's Discipline Score: {fresh_score}/100."
             
-            # Redirect to Analytics and refresh UI
-            st.session_state.current_page = 'Analytics'
+            # If notes were provided, auto-trigger the AI Coach and redirect there for analysis
+            if notes_val.strip():
+                import ai_logic
+                api_key = st.session_state.gemini_api_key or os.getenv("GEMINI_API_KEY")
+                
+                # Append user prompt to chat history
+                user_msg = f"[System Log]: I scored {fresh_score}/100 today. My notes: '{notes_val}'"
+                st.session_state.chat_history.append(("USER", user_msg))
+                
+                # Get brutal AI analysis
+                ai_feedback = ai_logic.chat_with_coach(
+                    api_key=api_key,
+                    user_id=user_id,
+                    user_message=f"I just submitted my daily log. My score is {fresh_score}/100. My personal notes are: '{notes_val}'. Give me a brutal, 2-sentence reality check about these specific notes.",
+                    chat_history=st.session_state.chat_history[:-1]
+                )
+                
+                st.session_state.chat_history.append(("COACH", ai_feedback))
+                st.session_state.current_page = 'AICoach'
+            else:
+                # Redirect to Analytics if no notes to analyze
+                st.session_state.current_page = 'Analytics'
+                
             st.rerun()
 
 def render_ai_coach():

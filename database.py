@@ -1,8 +1,13 @@
 import sqlite3
 from datetime import datetime, date, timedelta
 import pandas as pd
+import hashlib
 
 DB_NAME = "selfsync.db"
+
+def hash_password(password):
+    """Returns a SHA-256 hash of the given password."""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 # ==========================================
 # 1. DATABASE CONNECTION & SCHEMA
@@ -24,6 +29,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
             onboarding_completed BOOLEAN DEFAULT 0,
             discipline_score INTEGER DEFAULT 0,
             current_streak INTEGER DEFAULT 0,
@@ -99,12 +105,13 @@ def get_user_by_id(user_id):
     conn.close()
     return dict(row) if row else None
 
-def create_user(username):
+def create_user(username, password):
     """Creates a new user and returns the new user_id."""
     conn = get_connection()
     cursor = conn.cursor()
     try:
-        cursor.execute("INSERT INTO users (username) VALUES (?)", (username.strip(),))
+        hashed_pw = hash_password(password)
+        cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username.strip(), hashed_pw))
         user_id = cursor.lastrowid
         conn.commit()
         return user_id
@@ -112,6 +119,13 @@ def create_user(username):
         return None
     finally:
         conn.close()
+
+def verify_user(username, password):
+    """Verifies a user's password and returns the user dict if successful."""
+    user = get_user_by_username(username)
+    if user and user['password_hash'] == hash_password(password):
+        return user
+    return None
 
 def update_user_targets(user_id, target_sleep, target_screen_time):
     """Updates user sleep and screen time goals."""
@@ -171,9 +185,17 @@ def setup_default_habits(user_id):
         ("Read a Book / Study", "good"),
         ("Meditation / Mindfulness", "good"),
         ("Drink 3L Water", "good"),
+        ("Learn a New Skill / Code", "good"),
+        ("Journaling / Reflection", "good"),
+        ("Cold Shower / Ice Bath", "good"),
+        ("Stretch / Yoga", "good"),
         ("Doomscrolling on Social Media", "bad"),
         ("Junk Food / Sugar Intake", "bad"),
-        ("Procrastination / Delays", "bad")
+        ("Procrastination / Delays", "bad"),
+        ("Binge-watching TV/YouTube", "bad"),
+        ("Sleeping < 6 Hours", "bad"),
+        ("Complaining / Victim Mentality", "bad"),
+        ("Hitting the Snooze Button", "bad")
     ]
     conn = get_connection()
     cursor = conn.cursor()

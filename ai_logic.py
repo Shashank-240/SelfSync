@@ -221,5 +221,5 @@ def chat_with_coach(api_key, user_id, user_message, chat_history=[]):
         response = model.generate_content(prompt)
         return response.text
 
-    except Exception as e:
-        return f"🚨 [Gemini Error] I tried calling the Gemini forge but it failed. Details: {str(e)}. Falling back to offline assessment:\n\n" + get_rule_based_critique(user_id)
+    except Exception:
+        return get_rule_based_critique(user_id)
